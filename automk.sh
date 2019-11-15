@@ -1,8 +1,6 @@
 #!/bin/bash
 make clean
 export DPATH=$(pwd)
-echo 程序路径=$DPATH
+echo -e "\033[37;41m       程序路径=$DPATH         \033[0m"
 make
-cd bin
-./main
-cd ..
+./bin/main

@@ -15,6 +15,7 @@ char rev_msg[512]={0};
 int sockfd = -1;//socket句柄
 char* dpath = NULL;
 char* tmpath = NULL;
+char* cut = NULL;//裁剪拼接字符串
 
 #define DPATH 
 /*创建pem key文件*/
@@ -136,7 +137,7 @@ void publish_callback2(void** unused, struct mqtt_response_publish *published)
     memcpy(topic_name, published->topic_name, published->topic_name_size);
     topic_name[published->topic_name_size] = '\0';
     usleep(2000000U);
-    printf("\033[1m\033[45;32m主题('%s')最新消息:\n %s\033[0m\n", topic_name, (const char*) published->application_message);
+    //printf("\033[1m\033[45;32m主题('%s')最新消息:\n %s\033[0m\n", topic_name, (const char*) published->application_message);
     strcpy(rev_msg,(const char*) published->application_message);
     free(topic_name);
 }
@@ -156,7 +157,7 @@ int setTimeout(float time)
     time_use=(end.tv_sec-start.tv_sec)*1000000+(end.tv_usec-start.tv_usec);//微秒         
     if(time_use>=time)       
         {           
-            printf("\033[1m\033[45;33m[5] 等待超时......\033[0m\n\n");
+            printf("\033[1m\033[45;33m 等待超时......\033[0m\n\n");
             return -1;        
         }
     }
@@ -184,23 +185,27 @@ int regist(const char* addr, const char* port, const char* topic)
     printf("\033[1m\033[45;33m[1] 创建设备密钥对,展示设备公钥:\033[0m\n\n");
     usleep(2000000U);
     //createKey();
-    strcat(tmpath,"key/dpubkey.key");
+    tmpath= dpath;
+    strcat(tmpath,"/key/dpubkey.key");
     KeyPrint(tmpath);
-    tmpath=strtok(tmpath,"k");
+    cut=strstr(tmpath,"/key/dpubkey.key");
+    *cut='\0';
     usleep(2000000U);
 
 
     /*读取产品私钥*/
     RSA *ppri= RSA_new();
-    strcat(tmpath,"key/pprikey.key");
+    strcat(tmpath,"/key/pprikey.key");
     ppri = getKey(ppri,tmpath,PEM_read_RSAPrivateKey);
-    tmpath=strtok(tmpath,"k");
+    cut=strstr(tmpath,"/key/pprikey.key");
+    *cut='\0';
 
     /*读取设备公钥*/
     RSA *dpub= RSA_new();
-    strcat(tmpath,"key/dpubkey.key");
+    strcat(tmpath,"/key/dpubkey.key");
     dpub = getKey(dpub,tmpath,PEM_read_RSAPublicKey);
-    tmpath=strtok(tmpath,"k");
+    cut=strstr(tmpath,"/key/dpubkey.key");
+    *cut='\0';
     
     /*提取设备公钥n和e*/
     BIGNUM *bne=BN_new();
@@ -321,20 +326,22 @@ int regist(const char* addr, const char* port, const char* topic)
     usleep(2000000U);
     printf("rev_msg:");
     for (unsigned int i = 0; i < strlen(rev_msg)-4; i++)
-    printf("%c", rev_msg[i]);
+    printf("\033[1m\033[45;32m%c\033[0m", rev_msg[i]);
     printf("\n\n");
     usleep(2000000U);
     printf("\033[1m\033[45;33m[6] 返回数据校验.....\033[0m\n\n");
     usleep(2000000U);
 
     /*获取返回数据，验证hash，用平台公钥解密比对是否一致*/
-    cJSON *root_rev,*root_revsign; 
+    cJSON *root_rev; 
     root_rev = cJSON_CreateObject();
-    root_revsign = cJSON_CreateObject();
     root_rev = cJSON_Parse((const char *)rev_msg);
-    root_revsign = cJSON_GetObjectItem(root_rev,"sign");
+    char status[10];
+    strcpy(status,(cJSON_GetObjectItem(root_rev,"status"))->valuestring);//读取状态
     char sign_rev[257];
-    strcpy(sign_rev,root_revsign->valuestring);
+    strcpy(sign_rev,(cJSON_GetObjectItem(root_rev,"sign"))->valuestring);//读取签名
+    char sever_msg[30];
+    strcpy(sever_msg,(cJSON_GetObjectItem(root_rev,"msg"))->valuestring);//读取服务器返回消息
     cJSON_DeleteItemFromObject(root_rev,"sign");  
     char* veri_rev = cJSON_Print(root_rev);
 
@@ -371,9 +378,10 @@ int regist(const char* addr, const char* port, const char* topic)
 
     /*读取平台公钥*/
     RSA *platpub= RSA_new();
-    strcat(tmpath,"key/smp_public_key.pem");
+    strcat(tmpath,"/key/smp_public_key.pem");
     platpub = getKey(platpub,tmpath,PEM_read_RSA_PUBKEY);
-    tmpath=strtok(tmpath,"k");
+    cut=strstr(tmpath,"/key/smp_public_key.pem");
+    *cut='\0';
 
     /*使用公钥验签*/
     ret = RSA_verify(NID_sha1, (unsigned char *)digest_veri, SHA_DIGEST_LENGTH, (const unsigned char *)sign_rev_char, sizeof(sign_rev_char), platpub);
@@ -385,18 +393,18 @@ int regist(const char* addr, const char* port, const char* topic)
         {
             printf("\033[1m\033[45;33m[7] 返回数据验签成功 Verify_Success!\033[0m\n\n");
             usleep(2000000U);
-            if (strstr(rev_msg,"success")!=0)
-                printf("\033[1m\033[45;33m[8] 设备注册认证成功 Regist_Success!\033[0m\n\n");   
+            if (strcmp(status,"success")==0)
+                printf("\033[1m\033[45;33m[8] 设备注册认证成功 Regist_Success!\n    sever_msg:%s\033[0m\n\n",sever_msg);   
             else
             {
-                printf("\033[1m\033[45;33m[8] 设备注册认证失败 Regist_failed!\033[0m\n\n");
+                printf("\033[1m\033[45;33m[8] 设备注册认证失败 Regist_failed!\n    sever_msg:%s\033[0m\n\n",sever_msg);
                 exit_example(EXIT_SUCCESS, sockfd, NULL);
                 return 0;
             } 
         }  
     else
         {
-            printf("\033[1m\033[45;33m[7] 返回数据验签失败 Verify_Failed!\033[0m\n\n");
+            printf("\033[1m\033[45;33m[7] 返回数据验签失败 Verify_Failed!\n    sever_msg:%s\033[0m\n\n",sever_msg);
             exit_example(EXIT_SUCCESS, sockfd, NULL); 
             return 0;
         }
@@ -415,9 +423,9 @@ int measure(const char* addr, const char* port, const char* topic)
     char buff_img2[1024];
     char* tmpath = NULL;
         /* INPUT bios_image*/
-        strcat(tmpath,"img/bios.img");
+        tmpath=dpath;
+        strcat(tmpath,"/img/bios.img");
         fp1=fopen(tmpath,"rb");
-        tmpath=strtok(tmpath,"i");
         if(fp1==NULL)
         {
             printf("Can't open file\n");
@@ -425,6 +433,8 @@ int measure(const char* addr, const char* port, const char* topic)
         }
         fread(buff_img1,1,1024,fp1);
         fclose(fp1);
+        cut=strstr(tmpath,"/img/bios.img");
+        *cut='\0';
         fp1=NULL;
         printf("\033[1m\033[45;33m[1] 读取bios镜像文件 from：\033[0m\n\n/tpdevice/key/bios.img\n\n");
         usleep(2000000U);
@@ -439,8 +449,7 @@ int measure(const char* addr, const char* port, const char* topic)
         usleep(2000000U);
 
         /* INPUT os_image*/
-        strcat(tmpath,"img/os.img");
-        tmpath=strtok(tmpath,"i");
+        strcat(tmpath,"/img/os.img");
         fp2=fopen(tmpath,"rb");
         if(fp2==NULL)
         {
@@ -449,6 +458,8 @@ int measure(const char* addr, const char* port, const char* topic)
         }
         fread(buff_img2,1,1024,fp2);
         fclose(fp2);
+        cut=strstr(tmpath,"/img/os.img");
+        *cut='\0';
         fp2=NULL;
         printf("\033[1m\033[45;33m[3] 读取os镜像文件 from：\033[0m\n\n/tpdevice/key/os.img\n\n");
         usleep(2000000U);
@@ -505,9 +516,10 @@ int measure(const char* addr, const char* port, const char* topic)
 
         /*读取设备私钥*/
         RSA *dpri= RSA_new();
-        strcat(tmpath,"key/dprikey.key");
+        strcat(tmpath,"/key/dprikey.key");
         dpri = getKey(dpri,tmpath,PEM_read_RSAPrivateKey);
-        tmpath=strtok(tmpath,"k");
+        cut=strstr(tmpath,"/key/dprikey.key");
+        *cut='\0';
 
         /*加密度量json摘要*/
         unsigned char dig_encrypt[512]={0};
@@ -613,20 +625,22 @@ int measure(const char* addr, const char* port, const char* topic)
         usleep(2000000U);
         printf("rev_msg:");
         for (unsigned int i = 0; i < strlen(rev_msg)-4; i++)
-        printf("%c", rev_msg[i]);
+        printf("\033[1m\033[45;32m%c\033[0m", rev_msg[i]);
         printf("\n\n");
         usleep(2000000U);
         printf("\033[1m\033[45;33m[9] 返回数据校验.....\033[0m\n\n");
         usleep(2000000U);
 
         /*获取返回数据，验证hash，用平台公钥解密比对是否一致*/
-        cJSON *root_rev,*root_revsign; 
+        cJSON *root_rev; 
         root_rev = cJSON_CreateObject();
-        root_revsign = cJSON_CreateObject();
         root_rev = cJSON_Parse((const char *)rev_msg);
-        root_revsign = cJSON_GetObjectItem(root_rev,"sign");
+        char status[10];
+        strcpy(status,(cJSON_GetObjectItem(root_rev,"status"))->valuestring);//读取状态值
         char sign_rev[257];
-        strcpy(sign_rev,root_revsign->valuestring);
+        strcpy(sign_rev,(cJSON_GetObjectItem(root_rev,"sign"))->valuestring);//读取签名
+        char sever_msg[30];
+        strcpy(sever_msg,(cJSON_GetObjectItem(root_rev,"msg"))->valuestring);//读取服务器返回消息
         cJSON_DeleteItemFromObject(root_rev,"sign");  
         char* veri_rev = cJSON_Print(root_rev);
 
@@ -663,9 +677,10 @@ int measure(const char* addr, const char* port, const char* topic)
 
         /*读取平台公钥*/
         RSA *platpub= RSA_new();
-        strcat(tmpath,"key/smp_public_key.pem");
+        strcat(tmpath,"/key/smp_public_key.pem");
         platpub = getKey(platpub,tmpath,PEM_read_RSA_PUBKEY);
-        tmpath=strtok(tmpath,"k");
+        cut=strstr(tmpath,"/key/smp_public_key.pem");
+        *cut='\0';
 
         ret = RSA_verify(NID_sha1, (unsigned char *)digest_veri, SHA_DIGEST_LENGTH, (const unsigned char *)sign_rev_char, sizeof(sign_rev_char), platpub);
         printf("使用平台公钥验签RSA_verify ret=%d\n\n",ret);
@@ -675,23 +690,23 @@ int measure(const char* addr, const char* port, const char* topic)
             {
                 printf("\033[1m\033[45;33m[10] 返回数据验签成功 Verify_Success!\033[0m\n\n");
                 usleep(2000000U);
-                if (strstr(rev_msg,"trust")!=0)
-                    printf("\033[1m\033[45;33m[11] 设备可信度量验证通过 Measure_Success!\033[0m\n\n");   
-                else if(strstr(rev_msg,"danger")!=0)
+                if (strcmp(status,"trust")==0)
+                    printf("\033[1m\033[45;33m[11] 设备可信度量验证通过 Measure_Success!\n    sever_msg:%s\033[0m\n\n",sever_msg);   
+                else if(strcmp(status,"danger")==0)
                 {
-                    printf("\033[1m\033[45;33m[11] 设备可信度量验证不通过 Measure_Failed!\033[0m\n\n");
+                    printf("\033[1m\033[45;33m[11] 设备可信度量验证不通过 Measure_Failed!\n    sever_msg:%s\033[0m\n\n",sever_msg);
                     exit_example(EXIT_SUCCESS, sockfd, &client_daemon3);
                     return 0;
                 }
-                 else if(strstr(rev_msg,"verify_fail")!=0)
+                 else if(strcmp(status,"verify_fail")==0)
                 {
-                    printf("\033[1m\033[45;33m[11] 服务器端验签不通过 Server_Verify_Failed!\033[0m\n\n");
+                    printf("\033[1m\033[45;33m[11] 服务器端验签不通过 Server_Verify_Failed!\n    sever_msg:%s\033[0m\n\n",sever_msg);
                     exit_example(EXIT_SUCCESS, sockfd, &client_daemon3);
                     return 0;
                 }
                 else 
                 {
-                    printf("\033[1m\033[45;33m[11] 度量状态无法识别 MeasureState_Unidentified!\033[0m\n\n");
+                    printf("\033[1m\033[45;33m[11] 度量状态无法识别 MeasureState_Unidentified!\n    sever_msg:%s\033[0m\n\n",sever_msg);
                     exit_example(EXIT_SUCCESS, sockfd, &client_daemon3);
                     return 0;
                 }
@@ -717,8 +732,8 @@ int main(int argc, const char *argv[])
         addr = argv[1];
     } else {
         //addr = "218.89.239.8";
-        addr = "127.0.0.1";
-        //addr = "192.168.31.246";
+        //addr = "127.0.0.1";
+        addr = "192.168.31.246";
         //addr = "192.168.31.185";
         //addr = "47.112.10.111";
     }
@@ -745,7 +760,7 @@ int main(int argc, const char *argv[])
     
     while(fgetc(stdin)!= '\n');
     dpath = getenv("DPATH");
-    printf("dpath:%s\n",dpath );
+    //printf("dpath:%s\n",dpath );
     /*设备认证流程*/
     regist(addr, port, topic);
     /*设备度量流程*/
