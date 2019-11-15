@@ -635,11 +635,11 @@ int measure(const char* addr, const char* port, const char* topic)
         cJSON *root_rev; 
         root_rev = cJSON_CreateObject();
         root_rev = cJSON_Parse((const char *)rev_msg);
-        char status[10];
+        char status[50];
         strcpy(status,(cJSON_GetObjectItem(root_rev,"status"))->valuestring);//读取状态值
         char sign_rev[257];
         strcpy(sign_rev,(cJSON_GetObjectItem(root_rev,"sign"))->valuestring);//读取签名
-        char sever_msg[30];
+        char sever_msg[100];
         strcpy(sever_msg,(cJSON_GetObjectItem(root_rev,"msg"))->valuestring);//读取服务器返回消息
         cJSON_DeleteItemFromObject(root_rev,"sign");  
         char* veri_rev = cJSON_Print(root_rev);
@@ -733,8 +733,8 @@ int main(int argc, const char *argv[])
     } else {
         //addr = "218.89.239.8";
         //addr = "127.0.0.1";
-        addr = "192.168.31.246";
-        //addr = "192.168.31.185";
+        //addr = "192.168.31.246";
+        addr = "192.168.31.170";
         //addr = "47.112.10.111";
     }
     /* get port number (argv[2] if present) */
