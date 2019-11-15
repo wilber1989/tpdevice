@@ -325,7 +325,7 @@ int regist(const char* addr, const char* port, const char* topic)
     printf("\033[1m\033[45;33m[5] 服务器返回消息:\033[0m\n\n");
     usleep(2000000U);
     printf("rev_msg:");
-    for (unsigned int i = 0; i < strlen(rev_msg)-4; i++)
+    for (unsigned int i = 0; i < strlen(rev_msg); i++)
     printf("\033[1m\033[45;32m%c\033[0m", rev_msg[i]);
     printf("\n\n");
     usleep(2000000U);
@@ -420,10 +420,10 @@ int measure(const char* addr, const char* port, const char* topic)
 
     FILE *fp1,*fp2;
     char buff_img1[1024];
+    memset(buff_img1,0,1024);
     char buff_img2[1024];
-    char* tmpath = NULL;
+    memset(buff_img2,0,1024);
         /* INPUT bios_image*/
-        tmpath=dpath;
         strcat(tmpath,"/img/bios.img");
         fp1=fopen(tmpath,"rb");
         if(fp1==NULL)
@@ -438,11 +438,11 @@ int measure(const char* addr, const char* port, const char* topic)
         fp1=NULL;
         printf("\033[1m\033[45;33m[1] 读取bios镜像文件 from：\033[0m\n\n/tpdevice/key/bios.img\n\n");
         usleep(2000000U);
+
         /* SHA bios_image*/
-        unsigned char dig_img1[SHA_DIGEST_LENGTH];
+        unsigned char dig_img1[SHA_DIGEST_LENGTH]={0};
         hashMessage(dig_img1,buff_img1);
-     
-        char digHex_img1[SHA_DIGEST_LENGTH*2+1];
+        char digHex_img1[SHA_DIGEST_LENGTH*2+1]={0};
         for (int i = 0; i < SHA_DIGEST_LENGTH; i++)
         sprintf(&digHex_img1[i*2], "%02x", (unsigned int)dig_img1[i]);
         printf("\033[1m\033[45;33m[2] 计算bios镜像度量SHA值：\033[0m\n\n%s\n\n",digHex_img1);
@@ -465,17 +465,17 @@ int measure(const char* addr, const char* port, const char* topic)
         usleep(2000000U);
 
         /* SHA os_image*/
-        unsigned char dig_img2[SHA_DIGEST_LENGTH];
+        unsigned char dig_img2[SHA_DIGEST_LENGTH]={0};
         hashMessage(dig_img2,buff_img2);
-        char digHex_img2[SHA_DIGEST_LENGTH*2+1];
+        char digHex_img2[SHA_DIGEST_LENGTH*2+1]={0};
         for (int i = 0; i < SHA_DIGEST_LENGTH; i++)
         sprintf(&digHex_img2[i*2], "%02x", (unsigned int)dig_img2[i]);
         printf("\033[1m\033[45;33m[4] 计算os镜像度量SHA值：\033[0m\n\n%s\n\n",digHex_img2);
         usleep(2000000U);
 
         /*拼接两个16进制的摘要*/
-        unsigned char dig_comb[SHA_DIGEST_LENGTH];
-        unsigned char tmp_comb[SHA_DIGEST_LENGTH*4];
+        unsigned char dig_comb[SHA_DIGEST_LENGTH]={0};
+        unsigned char tmp_comb[SHA_DIGEST_LENGTH*4]={0};
         strcat((char *)tmp_comb,(const char *)digHex_img1);
         strcat((char *)tmp_comb,(const char *)digHex_img2);
 
@@ -624,7 +624,7 @@ int measure(const char* addr, const char* port, const char* topic)
         printf("\033[1m\033[45;33m[8] 服务器返回消息:\033[0m\n\n");
         usleep(2000000U);
         printf("rev_msg:");
-        for (unsigned int i = 0; i < strlen(rev_msg)-4; i++)
+        for (unsigned int i = 0; i < strlen(rev_msg); i++)
         printf("\033[1m\033[45;32m%c\033[0m", rev_msg[i]);
         printf("\n\n");
         usleep(2000000U);
