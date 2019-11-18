@@ -16,6 +16,8 @@ int sockfd = -1;//socket句柄
 char* dpath = NULL;
 char* tmpath = NULL;
 char* cut = NULL;//裁剪拼接字符串
+struct mqtt_client client;
+pthread_t client_daemon;
 
 #define DPATH 
 /*创建pem key文件*/
@@ -109,6 +111,9 @@ char* stringStrip(char *str)
 /*结束关闭socket*/
 void exit_example(int status, int sockfd, pthread_t *client_daemon)
 {
+    mqtt_publish(&client, "device1", "ZQQ is going away!", strlen("ZQQ is going away!"), MQTT_PUBLISH_QOS_1| MQTT_PUBLISH_RETAIN); 
+    mqtt_disconnect(&client);
+    usleep(2000000U);
     if (sockfd != -1) close(sockfd);
     if (client_daemon != NULL) pthread_cancel(*client_daemon);
     exit(status);
@@ -138,7 +143,7 @@ void publish_callback(void** unused, struct mqtt_response_publish *published)
 }
 
 /*判断执行时间，超时未受到消息结束*/     
-int setTimeout(float time)
+int setTimeout(float time,char* pubmsg)
 {     
     float time_use=0;
     struct timeval start;   
@@ -147,7 +152,7 @@ int setTimeout(float time)
 
     while(1)
     {
-    if(rev_msg[0]!=0) break;//获得消息中断循环        
+    if(strcmp(rev_msg,pubmsg)!=0) break;//获得消息中断循环        
     gettimeofday(&end,NULL);  
     time_use=(end.tv_sec-start.tv_sec)*1000000+(end.tv_usec-start.tv_usec);//微秒         
     if(time_use>=time)       
@@ -170,7 +175,7 @@ void hashMessage(unsigned char* digest,char* message)
 
 
 
-int regist(const char* addr, const char* port, const char* topic)
+int regist(const char* topic)
 {
     printf("\033[1m\033[45;33m-------------------------------------------\033[0m\n\n");
     printf("               \033[1m\033[45;33m设备认证流程\033[0m              \n\n");
@@ -186,7 +191,6 @@ int regist(const char* addr, const char* port, const char* topic)
     cut=strstr(tmpath,"/key/dpubkey.key");
     *cut='\0';
     usleep(2000000U);
-
 
     /*读取产品私钥*/
     RSA *ppri= RSA_new();
@@ -239,36 +243,7 @@ int regist(const char* addr, const char* port, const char* topic)
     usleep(2000000U);
     printf("%s\n\n",shString);
     usleep(2000000U); 
-
-    sockfd = open_nb_socket(addr, port);
-    if (sockfd == -1) {
-        perror("Failed to open socket: ");
-        exit_example(EXIT_FAILURE, sockfd, NULL);
-    }
-    fcntl(sockfd, F_SETFL, fcntl(sockfd, F_GETFL) | O_NONBLOCK);
-
-    /*认证发布客户端*/
-    struct mqtt_client client;
-    uint8_t sendbuf[2048]; 
-    uint8_t recvbuf[1024]; 
-    mqtt_init(&client, sockfd, sendbuf, sizeof(sendbuf), recvbuf, sizeof(recvbuf), publish_callback);
-    mqtt_connect(&client, "register_devices", NULL, NULL, 0, NULL, NULL, 0, 400);
-    if (client.error != MQTT_OK) 
-    {
-        fprintf(stderr, "error: %s\n", mqtt_error_str(client.error));
-        exit_example(EXIT_FAILURE, sockfd, NULL);
-    }
-
-    pthread_t client_daemon;
-    if(pthread_create(&client_daemon, NULL, client_refresher, &client))
-    {
-        fprintf(stderr, "Failed to start client daemon.\n");
-        exit_example(EXIT_FAILURE, sockfd, NULL);
-
-    }
-
-    mqtt_subscribe(&client, "devices/measurement/register/res", 0);
-
+   
     mqtt_publish(&client, topic, json1_1, strlen((const char *)json1_1), MQTT_PUBLISH_QOS_0);   
     if (client.error != MQTT_OK) 
     {
@@ -281,14 +256,17 @@ int regist(const char* addr, const char* port, const char* topic)
     printf("%s\n\n",json1_1);
     usleep(2000000U);
 
-    cJSON_Delete(root);
-    free(json1_1);
-
     printf("\033[1m\033[45;33m[4] 订阅消息并等待响应.....\033[0m\n\n");
     usleep(2000000U);
-    int ret = setTimeout(10000000);
+    int ret = setTimeout(10000000,json1_1);
     if(ret==-1)
-    exit_example(EXIT_SUCCESS, sockfd, NULL);
+    {
+        cJSON_Delete(root);
+        free(json1_1);
+        exit_example(EXIT_SUCCESS, sockfd, &client_daemon);    
+    }
+    cJSON_Delete(root);
+    free(json1_1);
 
     printf("\033[1m\033[45;33m[5] 服务器返回消息:\033[0m\n\n");
     usleep(2000000U);
@@ -328,7 +306,7 @@ int regist(const char* addr, const char* port, const char* topic)
         sign_rev_int[i] = (unsigned int)(sign_rev[i]-'A'+10);
     else {
         printf("received msg error!\n");
-        exit_example(EXIT_SUCCESS, sockfd, NULL);
+        exit_example(EXIT_SUCCESS, sockfd, &client_daemon);
         return 0;
         }
     }
@@ -366,20 +344,20 @@ int regist(const char* addr, const char* port, const char* topic)
             else
             {
                 printf("\033[1m\033[45;33m[8] 设备注册认证失败 Regist_failed!\n    sever_msg:%s\033[0m\n\n",sever_msg);
-                exit_example(EXIT_SUCCESS, sockfd, NULL);
+                exit_example(EXIT_SUCCESS, sockfd, &client_daemon);
                 return 0;
             } 
         }  
     else
         {
             printf("\033[1m\033[45;33m[7] 返回数据验签失败 Verify_Failed!\n    sever_msg:%s\033[0m\n\n",sever_msg);
-            exit_example(EXIT_SUCCESS, sockfd, NULL); 
+            exit_example(EXIT_SUCCESS, sockfd, &client_daemon); 
             return 0;
         }
     rev_msg[0]=0;//清空全局标志位
     return 0;
 }
-int measure(const char* addr, const char* port, const char* topic)
+int measure(const char* topic)
 {
     usleep(2000000U);
     printf("\033[1m\033[45;33m-------------------------------------------\033[0m\n\n");
@@ -501,54 +479,27 @@ int measure(const char* addr, const char* port, const char* topic)
         sprintf(&digHex_encrypt[i*2], "%02x", (unsigned int)dig_encrypt[i]);
         cJSON_AddStringToObject(root,"sign",digHex_encrypt); 
         char* meas_out = cJSON_Print(root);
-
-        /* open the non-blocking TCP socket (connecting to the broker) */
-        sockfd = open_nb_socket(addr, port);
-
-         if (sockfd == -1) {
-             perror("Failed to open socket: ");
-            exit_example(EXIT_FAILURE, sockfd, NULL);
-         }
-         fcntl(sockfd, F_SETFL, fcntl(sockfd, F_GETFL) | O_NONBLOCK);
-        
-        /* 度量发布客户端 */
-        struct mqtt_client client;
-        uint8_t sendbuf[2048]; 
-        uint8_t recvbuf[1024]; 
-        mqtt_init(&client, sockfd, sendbuf, sizeof(sendbuf), recvbuf, sizeof(recvbuf), publish_callback);
-        mqtt_connect(&client, "measure_devices", NULL, NULL, 0, NULL, NULL, 0, 400);
-        if (client.error != MQTT_OK) 
-        {
-            fprintf(stderr, "error: %s\n", mqtt_error_str(client.error));
-            exit_example(EXIT_FAILURE, sockfd, NULL);
-        }
-
-        pthread_t client_daemon;
-        if(pthread_create(&client_daemon, NULL, client_refresher, &client)) 
-        {
-            fprintf(stderr, "Failed to start client daemon.\n");
-            exit_example(EXIT_FAILURE, sockfd, NULL);
-
-         }
-        mqtt_subscribe(&client, "devices/measurement/measure/res", 0);
-
+               
+        printf("\033[1m\033[45;33m[6] 设备发布度量消息:\033[0m\n\n");
+        usleep(2000000U);
+        printf("%s\n\n",meas_out);          
         mqtt_publish(&client, topic, meas_out, strlen((const char *)meas_out), MQTT_PUBLISH_QOS_0);
         if (client.error != MQTT_OK) {
             fprintf(stderr, "error: %s\n", mqtt_error_str(client.error));
             exit_example(EXIT_FAILURE, sockfd, &client_daemon);
-        }
-        printf("\033[1m\033[45;33m[6] 设备发布度量消息:\033[0m\n\n");
-        usleep(2000000U);
-        printf("%s\n\n",meas_out);       
-        cJSON_Delete(root);
-        free(meas_out);  
-        usleep(2000000U);
+        }  
         
         printf("\033[1m\033[45;33m[7] 订阅消息并等待响应.....\033[0m\n\n");
         usleep(2000000U);
-        int ret = setTimeout(10000000);
+        int ret = setTimeout(10000000,meas_out);
         if(ret==-1)
-        exit_example(EXIT_SUCCESS, sockfd, NULL);
+        {
+            cJSON_Delete(root);
+            free(meas_out);
+            exit_example(EXIT_SUCCESS, sockfd, &client_daemon);
+        }      
+        cJSON_Delete(root);
+        free(meas_out);
 
         printf("\033[1m\033[45;33m[8] 服务器返回消息:\033[0m\n\n");
         usleep(2000000U);
@@ -635,7 +586,7 @@ int measure(const char* addr, const char* port, const char* topic)
                 }
                 else 
                 {
-                    printf("\033[1m\033[45;33m[11] 度量状态无法识别 MeasureState_Unidentified!\n    sever_msg:%s\033[0m\n\n",sever_msg);
+                    printf("\033[1m\033[45;33m[11] 度量状态无法识别 MeasureState_Unidentified!\n    sever_msg:%s\033[0m\n\n",sever_msg);              
                     exit_example(EXIT_SUCCESS, sockfd, &client_daemon);
                     return 0;
                 }
@@ -661,10 +612,10 @@ int main(int argc, const char *argv[])
         addr = argv[1];
     } else {
         //addr = "218.89.239.8";
-        //addr = "127.0.0.1";
+        addr = "127.0.0.1";
         //addr = "192.168.31.246";
         //addr = "192.168.31.170";
-        addr = "47.112.10.111";
+        //addr = "47.112.10.111";
     }
     /* get port number (argv[2] if present) */
     if (argc > 2) {
@@ -690,10 +641,39 @@ int main(int argc, const char *argv[])
     while(fgetc(stdin)!= '\n');
     dpath = getenv("DPATH");
     //printf("dpath:%s\n",dpath );
+    sockfd = open_nb_socket(addr, port);
+    if (sockfd == -1) {
+        perror("Failed to open socket: ");
+        exit_example(EXIT_FAILURE, sockfd, NULL);
+    }
+    fcntl(sockfd, F_SETFL, fcntl(sockfd, F_GETFL) | O_NONBLOCK);
+
+    /*建立mqtt客户端*/
+    uint8_t sendbuf[2048]; 
+    uint8_t recvbuf[1024]; 
+    mqtt_init(&client, sockfd, sendbuf, sizeof(sendbuf), recvbuf, sizeof(recvbuf), publish_callback);
+    mqtt_connect(&client, "terminal_devices", "device1", "ZQQ is 24K pure handsome!", strlen("ZQQ is 24K pure  handsome!"), NULL, NULL, MQTT_PUBLISH_QOS_1| MQTT_CONNECT_WILL_RETAIN, 400);
+    if (client.error != MQTT_OK) 
+    {
+        fprintf(stderr, "error: %s\n", mqtt_error_str(client.error));
+        exit_example(EXIT_FAILURE, sockfd, NULL);
+    }
+
+    if(pthread_create(&client_daemon, NULL, client_refresher, &client))
+    {
+        fprintf(stderr, "Failed to start client daemon.\n");
+        exit_example(EXIT_FAILURE, sockfd, NULL);
+
+    }
+    mqtt_publish(&client, "device1", "ZQQ is coming!", strlen("ZQQ is coming!"), MQTT_PUBLISH_QOS_1| MQTT_PUBLISH_RETAIN);   
+    mqtt_subscribe(&client, "devices/measurement/register/res", 0);
+    mqtt_subscribe(&client, "devices/measurement/measure/res", 0);
+
     /*设备认证流程*/
-    regist(addr, port, topic);
+    regist(topic);
     /*设备度量流程*/
-    measure(addr, port, "devices/measurement/measure");  
+    measure("devices/measurement/measure");  
+    while(fgetc(stdin)!=EOF);
     exit_example(EXIT_SUCCESS, sockfd, NULL);
     return 0;
 }
