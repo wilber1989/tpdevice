@@ -116,7 +116,7 @@ void exit_example(int status, int sockfd, pthread_t *client_daemon)
                  strlen("device offline!"), MQTT_PUBLISH_QOS_1| MQTT_PUBLISH_RETAIN); 
     mqtt_disconnect(&client);
     usleep(2000000U);
-    printf("\033[1m\033[45;33m设备连接已断开！\033[0m\n\n%s\n\n");
+    printf("\033[1m\033[45;33m设备连接已断开！\033[0m\n\n");
     if (sockfd != -1) close(sockfd);
     if (client_daemon != NULL) pthread_cancel(*client_daemon);
     exit(status);
