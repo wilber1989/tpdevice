@@ -116,6 +116,7 @@ void exit_example(int status, int sockfd, pthread_t *client_daemon)
                  strlen("device offline!"), MQTT_PUBLISH_QOS_1| MQTT_PUBLISH_RETAIN); 
     mqtt_disconnect(&client);
     usleep(2000000U);
+    printf("\033[1m\033[45;33m设备连接已断开！\033[0m\n\n%s\n\n");
     if (sockfd != -1) close(sockfd);
     if (client_daemon != NULL) pthread_cancel(*client_daemon);
     exit(status);
@@ -614,9 +615,9 @@ int main(int argc, const char *argv[])
         addr = argv[1];
     } else {
         //addr = "218.89.239.8";
-        addr = "127.0.0.1";
+        //addr = "127.0.0.1";
         //addr = "192.168.31.246";
-        //addr = "192.168.31.170";
+        addr = "192.168.31.183";
         //addr = "47.112.10.111";
     }
     /* get port number (argv[2] if present) */
