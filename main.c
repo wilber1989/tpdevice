@@ -112,8 +112,8 @@ char* stringStrip(char *str)
 /*结束关闭socket*/
 void exit_example(int status, int sockfd, pthread_t *client_daemon)
 {
-    mqtt_publish(&client, devicename, "device offline!", 
-                 strlen("device offline!"), MQTT_PUBLISH_QOS_1| MQTT_PUBLISH_RETAIN); 
+    mqtt_publish(&client, devicename, "offline", 
+                 strlen("offline"), MQTT_PUBLISH_QOS_1| MQTT_PUBLISH_RETAIN); 
     mqtt_disconnect(&client);
     usleep(2000000U);
     printf("\033[1m\033[45;33m设备连接已断开！\033[0m\n\n");
@@ -657,9 +657,9 @@ int main(int argc, const char *argv[])
     uint8_t sendbuf[2048]; 
     uint8_t recvbuf[1024]; 
     mqtt_init(&client, sockfd, sendbuf, sizeof(sendbuf), recvbuf, sizeof(recvbuf), publish_callback);
-    mqtt_connect(&client, devicename, devicename, "device is disconnect with exception!", 
-                strlen("device is disconnect with exception!"), NULL, NULL, MQTT_PUBLISH_QOS_1| MQTT_CONNECT_WILL_RETAIN, 400);
-    if (client.error != MQTT_OK) 
+    mqtt_connect(&client, devicename, devicename, "exception", 
+                strlen("exception"), NULL, NULL, MQTT_PUBLISH_QOS_1| MQTT_CONNECT_WILL_RETAIN, 400);
+    if (client.error != MQTT_OK)
     {
         fprintf(stderr, "error: %s\n", mqtt_error_str(client.error));
         exit_example(EXIT_FAILURE, sockfd, NULL);
@@ -672,8 +672,8 @@ int main(int argc, const char *argv[])
 
     }
     devicename = getenv("DEVICENAME");
-    mqtt_publish(&client, devicename, "device online!", 
-                 strlen("device online!"), MQTT_PUBLISH_QOS_1| MQTT_PUBLISH_RETAIN);   
+    mqtt_publish(&client, devicename, "online", 
+                 strlen("online"), MQTT_PUBLISH_QOS_1| MQTT_PUBLISH_RETAIN);   
     mqtt_subscribe(&client, "devices/measurement/register/res", 0);
     mqtt_subscribe(&client, "devices/measurement/measure/res", 0);
 
