@@ -10,13 +10,15 @@
 #include <mqtt.h>
 #include "templates/posix_sockets.h"
 
-/*获取订阅消息变量*/
-char rev_msg[512]={0};
+const char * deviceID;//获取shell当中的环境变量设备ID
+char rev_msg[512]={0};//获取订阅消息变量
+char tmpTopic[50] = {0};//拼接各个主题
 int sockfd = -1;//socket句柄
-char* dpath = NULL;
-char* tmpath = NULL;
+
+char* dpath = NULL;//项目文件路径
+char* tmpath = NULL;//拼接各类路径
 char* cut = NULL;//裁剪拼接字符串
-char* devicename = NULL;
+
 struct mqtt_client client;
 pthread_t client_daemon;
 
@@ -39,10 +41,12 @@ int createKey()
     //RSA_print_fp(stdout, rsa,5);
     strcat(tmpath,"key/dpubkey.key");
     pub_file = fopen(tmpath,"w");
-    tmpath=strtok(tmpath,"k");
+    cut=strstr(tmpath,"/key/dpubkey.key");
+    *cut='\0';
     strcat(tmpath,"key/dprikey.key");
     pri_file = fopen(tmpath,"w");
-    tmpath=strtok(tmpath,"k");
+    cut=strstr(tmpath,"/key/dpubkey.key");
+    *cut='\0';
     if (NULL == pub_file||NULL == pri_file)
     {
         printf("create file 'key' failed!\n");
@@ -112,7 +116,9 @@ char* stringStrip(char *str)
 /*结束关闭socket*/
 void exit_example(int status, int sockfd, pthread_t *client_daemon)
 {
-    mqtt_publish(&client, devicename, "offline", 
+    memset(tmpTopic,0,sizeof(tmpTopic)); 
+    snprintf(tmpTopic,sizeof(tmpTopic),"%s%s%s","devices/",deviceID,"/status"); 
+    mqtt_publish(&client, tmpTopic, "offline", 
                  strlen("offline"), MQTT_PUBLISH_QOS_1| MQTT_PUBLISH_RETAIN); 
     mqtt_disconnect(&client);
     usleep(2000000U);
@@ -188,7 +194,6 @@ int regist(const char* topic)
     printf("\033[1m\033[45;33m[1] 创建设备密钥对,展示设备公钥:\033[0m\n\n");
     usleep(2000000U);
     //createKey();
-    tmpath= dpath;
     strcat(tmpath,"/key/dpubkey.key");
     KeyPrint(tmpath);
     cut=strstr(tmpath,"/key/dpubkey.key");
@@ -222,7 +227,7 @@ int regist(const char* topic)
     cJSON *root;   
     root=cJSON_CreateObject();
     cJSON_AddStringToObject(root,"flag","register");
-    cJSON_AddStringToObject(root,"deviceid","chislab1"); 
+    cJSON_AddStringToObject(root,"deviceid",deviceID); 
     cJSON_AddStringToObject(root,"pub_e",dpub_e);
     cJSON_AddStringToObject(root,"pub_n",dpub_n);
     char* json1 = cJSON_Print(root);  
@@ -609,15 +614,14 @@ int main(int argc, const char *argv[])
 {
     const char* addr;
     const char* port;
-    const char* topic;
     /* get address (argv[1] if present) */
     if (argc > 1) {
         addr = argv[1];
     } else {
         //addr = "218.89.239.8";
-        //addr = "127.0.0.1";
+        addr = "127.0.0.1";
         //addr = "192.168.31.246";
-        addr = "192.168.31.183";
+        //addr = "192.168.31.183";
         //addr = "47.112.10.111";
     }
     /* get port number (argv[2] if present) */
@@ -626,13 +630,7 @@ int main(int argc, const char *argv[])
     } else {
         port = "1883";
     }
-    /* get the topic name to publish */
-    if (argc > 3) {
-        topic = argv[3];
-    } else {
-        //topic = "devices/TC/measurement";
-        topic = "devices/measurement/register";
-    }
+
     printf("----------------------------------------\n");
     printf("\033[1m\033[45;33m终端设备认证、度量演示程序\033[0m\n");
     printf("----------------------------------------\n");
@@ -644,7 +642,8 @@ int main(int argc, const char *argv[])
     while(fgetc(stdin)!= '\n');
     dpath = getenv("DPATH");
     //printf("dpath:%s\n",dpath ); 
-    devicename = getenv("DEVICENAME");
+    tmpath= dpath;
+    deviceID = getenv("DEVICEID");
 
     sockfd = open_nb_socket(addr, port);
     if (sockfd == -1) {
@@ -656,10 +655,12 @@ int main(int argc, const char *argv[])
     /*建立mqtt客户端*/
     uint8_t sendbuf[2048]; 
     uint8_t recvbuf[1024]; 
-    mqtt_init(&client, sockfd, sendbuf, sizeof(sendbuf), recvbuf, sizeof(recvbuf), publish_callback);
-    mqtt_connect(&client, devicename, devicename, "exception", 
+    mqtt_init(&client, sockfd, sendbuf, sizeof(sendbuf), recvbuf, sizeof(recvbuf), publish_callback); 
+    
+    snprintf(tmpTopic,sizeof(tmpTopic),"%s%s%s","devices/",deviceID,"/status");
+    mqtt_connect(&client, deviceID, tmpTopic, "exception", 
                 strlen("exception"), NULL, NULL, MQTT_PUBLISH_QOS_1| MQTT_CONNECT_WILL_RETAIN, 400);
-    if (client.error != MQTT_OK)
+    if (client.error != MQTT_OK) 
     {
         fprintf(stderr, "error: %s\n", mqtt_error_str(client.error));
         exit_example(EXIT_FAILURE, sockfd, NULL);
@@ -671,16 +672,29 @@ int main(int argc, const char *argv[])
         exit_example(EXIT_FAILURE, sockfd, NULL);
 
     }
-    devicename = getenv("DEVICENAME");
-    mqtt_publish(&client, devicename, "online", 
-                 strlen("online"), MQTT_PUBLISH_QOS_1| MQTT_PUBLISH_RETAIN);   
-    mqtt_subscribe(&client, "devices/measurement/register/res", 0);
-    mqtt_subscribe(&client, "devices/measurement/measure/res", 0);
+    memset(tmpTopic,0,sizeof(tmpTopic));
+    snprintf(tmpTopic,sizeof(tmpTopic),"%s%s%s","devices/",deviceID,"/status"); 
+    mqtt_publish(&client, tmpTopic, "online", 
+                 strlen("online"), MQTT_PUBLISH_QOS_1| MQTT_PUBLISH_RETAIN);
+    
+    memset(tmpTopic,0,sizeof(tmpTopic));
+    snprintf(tmpTopic,sizeof(tmpTopic),"%s%s%s","devices/",deviceID,"/regist/res"); 
+    mqtt_subscribe(&client, tmpTopic, 0);
+    
+    memset(tmpTopic,0,sizeof(tmpTopic)); 
+    snprintf(tmpTopic,sizeof(tmpTopic),"%s%s%s","devices/",deviceID,"/measure/res"); 
+    mqtt_subscribe(&client, tmpTopic, 0);
 
     /*设备认证流程*/
-    regist(topic);
+    memset(tmpTopic,0,sizeof(tmpTopic));
+    snprintf(tmpTopic,sizeof(tmpTopic),"%s%s%s","devices/",deviceID,"/regist"); 
+    regist(tmpTopic);
+
     /*设备度量流程*/
-    measure("devices/measurement/measure");  
+    memset(tmpTopic,0,sizeof(tmpTopic));
+    snprintf(tmpTopic,sizeof(tmpTopic),"%s%s%s","devices/",deviceID,"/measure"); 
+    measure(tmpTopic); 
+     
     while(fgetc(stdin)!=EOF);
     exit_example(EXIT_SUCCESS, sockfd, NULL);
     return 0;
