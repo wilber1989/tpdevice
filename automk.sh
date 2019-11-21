@@ -1,5 +1,7 @@
 #!/bin/bash
 make clean
+make
+
 export DPATH=$(pwd)
 echo -e "\033[37;41m     程序路径=$DPATH         \033[0m"
 if [[ -n "$1" ]]; then
@@ -20,5 +22,5 @@ if [[ -n "$3" ]]; then
 else
 	echo -e "\033[37;41m     无连接端口输入，使用默认端口1883    \033[0m"
 fi
-make
+
 ./bin/main $2 $3

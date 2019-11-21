@@ -445,7 +445,7 @@ int measure(const char* topic)
         cJSON *root,*ml,*pcrs,*file1,*file2;   
         root=cJSON_CreateObject();        
         cJSON_AddStringToObject(root,"flag","measure");
-        cJSON_AddStringToObject(root,"deviceid","chislab1"); 
+        cJSON_AddStringToObject(root,"deviceid",deviceID); 
         cJSON_AddItemToObject(root, "ML", ml=cJSON_CreateObject()); 
 
         cJSON_AddNumberToObject(ml,"length",2);
