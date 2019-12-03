@@ -23,41 +23,87 @@ struct mqtt_client client;
 pthread_t client_daemon;
 
 #define DPATH 
-/*创建pem key文件*/
+/*创建ecc key文件*/
 int createKey()
 {
-    RSA *rsa= RSA_new();
-    BIGNUM *bne=BN_new();
-    BN_set_word(bne,RSA_F4);
-    RSA_generate_key_ex(rsa,512,bne,NULL);
-    RSA* pub = RSAPublicKey_dup(rsa);
-    RSA* pri = RSAPrivateKey_dup(rsa);  
-    FILE *pub_file,*pri_file;
-    if (NULL == rsa)
+    EC_KEY *eckey,*pubkey;
+    EC_GROUP *group;
+
+    unsigned int ret,nid,size,i,sig_len;
+    EC_builtin_curve *curves;
+    int crv_len;
+
+    /* 构造 EC_KEY 数据结构 */
+    eckey = EC_KEY_new();
+    pubkey = EC_KEY_new();
+    if(eckey == NULL && pubkey == NULL)
     {
-        printf("RSA not initial.\n");
-        return 0;
+        printf("EC_KEY_new err!\n");
+        return -1;
     }
-    //RSA_print_fp(stdout, rsa,5);
-    strcat(tmpath,"key/dpubkey.key");
-    pub_file = fopen(tmpath,"w");
-    cut=strstr(tmpath,"/key/dpubkey.key");
-    *cut='\0';
-    strcat(tmpath,"key/dprikey.key");
-    pri_file = fopen(tmpath,"w");
-    cut=strstr(tmpath,"/key/dpubkey.key");
-    *cut='\0';
-    if (NULL == pub_file||NULL == pri_file)
+
+    /* 获取实现的椭圆曲线个数 */
+    crv_len = EC_get_builtin_curves(NULL, 0);
+    curves = (EC_builtin_curve *)malloc(sizeof(EC_builtin_curve) * crv_len);
+    /* 获取椭圆曲线列表 */
+    EC_get_builtin_curves(curves, crv_len);
+
+    /* 选取一种椭圆曲线 nid=curves[0].nid;会有错误，原因是密钥太短*/
+    //nid = curves[415].nid;
+
+    /* 根据选择的椭圆曲线生成密钥参数 group */
+    group = EC_GROUP_new_by_curve_name(NID_X9_62_prime256v1);// X9.62/SECG curve over a 256 bit prime field（NID: 415）
+    if(group==NULL)
+    {
+        printf("EC_GROUP_new_by_curve_name err!\n");
+        return -1;
+    }
+
+    /* 设置密钥参数 */
+    ret=EC_KEY_set_group(eckey,group);
+    if(ret!=1)
+    {
+        printf("EC_KEY_set_group err.\n");
+        return -1;
+    }
+    /* 设置密钥flag，很重要～！ */
+    EC_KEY_set_asn1_flag(eckey, OPENSSL_EC_NAMED_CURVE);
+
+    /* 生成密钥 */
+    ret=EC_KEY_generate_key(eckey);
+    if(ret!=1)
+    {
+        printf("EC_KEY_generate_key err.\n");
+        return -1;
+    }
+
+    /* 检查密钥 */
+    ret=EC_KEY_check_key(eckey);
+    if(ret!=1)
+    {
+        printf("check eckey err.\n");
+        return -1;
+    }
+    /* 生成公钥 */
+    FILE *key_file;
+    strcat(tmpath,"/key/decckey.pem");
+    key_file= fopen(tmpath,"w");
+        if (NULL == key_file)
     {
         printf("create file 'key' failed!\n");
-        return 0;
+        return -1;
     }
-    PEM_write_RSAPublicKey(pub_file, pub);
-    PEM_write_RSAPrivateKey(pri_file, pri, NULL, NULL, 512, NULL, NULL);
-    fclose(pub_file);
-    fclose(pri_file);
-    RSA_free(rsa);
-    return 1;
+    cut=strstr(tmpath,"/key/decckey.pem");
+    *cut='\0';
+
+    EC_KEY_print_fp(stdout, pubkey, 0);
+    PEM_write_EC_PUBKEY(key_file,eckey);
+
+    fclose(key_file);
+    EC_KEY_free(eckey);
+    EC_KEY_free(pubkey);
+    free(curves);
+    return 0;
 }
 
 /*读取key文件并打印*/
@@ -644,7 +690,7 @@ int main(int argc, const char *argv[])
     //printf("dpath:%s\n",dpath ); 
     tmpath= dpath;
     deviceID = getenv("DEVICEID");
-
+    createKey();
     sockfd = open_nb_socket(addr, port);
     if (sockfd == -1) {
         perror("Failed to open socket: ");
