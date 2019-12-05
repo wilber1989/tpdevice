@@ -1,5 +1,5 @@
 CC = gcc
-CFLAGS = -Wextra -Wall -std=gnu99 -Iinclude -Wno-unused-parameter -Wno-unused-variable -Wno-duplicate-decl-specifier
+CFLAGS = -g -Wextra -Wall -std=gnu99 -Iinclude -Wno-unused-parameter -Wno-unused-variable -Wno-duplicate-decl-specifier
 MQTT_C_SOURCES = src/mqtt.c src/mqtt_pal.c
 MQTT_C_EXAMPLES = bin/main
 BINDIR = bin

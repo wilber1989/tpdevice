@@ -26,17 +26,16 @@ pthread_t client_daemon;
 /*创建ecc key文件*/
 int createKey()
 {
-    EC_KEY *eckey,*pubkey;
+    EC_KEY *eckey;
     EC_GROUP *group;
 
-    unsigned int ret,nid,size,i,sig_len;
+    unsigned int ret;
     EC_builtin_curve *curves;
     int crv_len;
 
     /* 构造 EC_KEY 数据结构 */
     eckey = EC_KEY_new();
-    pubkey = EC_KEY_new();
-    if(eckey == NULL && pubkey == NULL)
+    if(eckey == NULL)
     {
         printf("EC_KEY_new err!\n");
         return -1;
@@ -84,24 +83,33 @@ int createKey()
         printf("check eckey err.\n");
         return -1;
     }
-    /* 生成公钥 */
-    FILE *key_file;
-    strcat(tmpath,"/key/decckey.pem");
-    key_file= fopen(tmpath,"w");
-        if (NULL == key_file)
+    /* 生成公私钥 */
+    FILE *pub_file,*pri_file;
+    strcat(tmpath,"/key/deccpubkey.pem");
+    pub_file= fopen(tmpath,"w");
+        if (NULL == pub_file)
     {
-        printf("create file 'key' failed!\n");
+        printf("create file 'pubkey' failed!\n");
         return -1;
     }
-    cut=strstr(tmpath,"/key/decckey.pem");
+    cut=strstr(tmpath,"/key/deccpubkey.pem");
     *cut='\0';
+    //EC_KEY_print_fp(stdout, pubkey, 0);
+    PEM_write_EC_PUBKEY(pub_file,eckey);
+    fclose(pub_file);
 
-    EC_KEY_print_fp(stdout, pubkey, 0);
-    PEM_write_EC_PUBKEY(key_file,eckey);
-
-    fclose(key_file);
+    strcat(tmpath,"/key/deccprikey.pem");
+    pri_file= fopen(tmpath,"w");
+        if (NULL == pri_file)
+    {
+        printf("create file 'prikey' failed!\n");
+        return -1;
+    }
+    cut=strstr(tmpath,"/key/deccprikey.pem");
+    *cut='\0';
+    PEM_write_ECPrivateKey(pri_file,eckey,NULL,NULL,0,NULL,NULL);
+    fclose(pri_file);
     EC_KEY_free(eckey);
-    EC_KEY_free(pubkey);
     free(curves);
     return 0;
 }
@@ -111,16 +119,17 @@ int KeyPrint(const char * addr)
 {
     FILE *file;
     char buffer[512];
+    memset(buffer,0,512);
     file = fopen(addr, "r");
     if (NULL == file)
     {
-        printf("open file 'pubkey.key' failed!\n");
+        printf("open file 'key.pem' failed!\n");
         return  -1;
     }
     fseek(file, 0, SEEK_END);
     int length = ftell(file);
     fseek(file, 0, SEEK_SET);
-    fread(buffer, sizeof(char), length-3, file);
+    fread(buffer, sizeof(char), length, file);
     printf("%s\n\n", buffer);
     fclose(file);
     file=NULL;
@@ -128,16 +137,32 @@ int KeyPrint(const char * addr)
 }
 
 /*读取密钥*/
-RSA* getKey(RSA* key, const char * addr,RSA* (*keyfun)() )
+EC_KEY* getPubKey(EC_KEY* key, const char * addr,EC_KEY * (*keyfun)() )
 {
     FILE *file;
     file = fopen(addr, "r");
     if (NULL == file)
     {
-        printf("open file 'key' failed!\n");
-        return (RSA*)-1;
+        printf("open file 'pubkey' failed!\n");
+        return (EC_KEY*)-1;
+    }  
+    (*keyfun)(file,&key);
+    //RSA_print_fp(stdout,key,5);
+    fclose(file);
+    file=NULL;  
+    return key;     
+}
+/*读取密钥*/
+EC_KEY* getPriKey(EC_KEY* key, const char * addr,EC_KEY * (*keyfun)() )
+{
+    FILE *file;
+    file = fopen(addr, "r");
+    if (NULL == file)
+    {
+        printf("open file 'prikey' failed!\n");
+        return (EC_KEY*)-1;
     }
-    (*keyfun)(file,&key, NULL, NULL);
+    (*keyfun)(file,&key,NULL,NULL,0,NULL,NULL);  
     //RSA_print_fp(stdout,key,5);
     fclose(file);
     file=NULL;  
@@ -222,10 +247,10 @@ int setTimeout(float time,char* pubmsg)
 /*计算消息SHA1值*/
 void hashMessage(unsigned char* digest,char* message)
 {   
-    SHA_CTX ctx;
-    SHA1_Init(&ctx);
-    SHA1_Update(&ctx, message, strlen(message));
-    SHA1_Final(digest, &ctx);
+    SHA256_CTX ctx;
+    SHA256_Init(&ctx);
+    SHA256_Update(&ctx, message, strlen(message));
+    SHA256_Final(digest, &ctx);
 }
 
 
@@ -240,52 +265,62 @@ int regist(const char* topic)
     printf("\033[1m\033[45;33m[1] 创建设备密钥对,展示设备公钥:\033[0m\n\n");
     usleep(2000000U);
     //createKey();
-    strcat(tmpath,"/key/dpubkey.key");
+    strcat(tmpath,"/key/deccpubkey.pem");
     KeyPrint(tmpath);
-    cut=strstr(tmpath,"/key/dpubkey.key");
+    cut=strstr(tmpath,"/key/deccpubkey.pem");
     *cut='\0';
     usleep(2000000U);
 
     /*读取产品私钥*/
-    RSA *ppri= RSA_new();
-    strcat(tmpath,"/key/pprikey.key");
-    ppri = getKey(ppri,tmpath,PEM_read_RSAPrivateKey);
-    cut=strstr(tmpath,"/key/pprikey.key");
+    EC_KEY *ppri = EC_KEY_new();
+    strcat(tmpath,"/key/peccprikey.pem");
+    ppri = getPriKey(ppri,tmpath,PEM_read_ECPrivateKey);
+    cut=strstr(tmpath,"/key/peccprikey.pem");
     *cut='\0';
 
     /*读取设备公钥*/
-    RSA *dpub= RSA_new();
-    strcat(tmpath,"/key/dpubkey.key");
-    dpub = getKey(dpub,tmpath,PEM_read_RSAPublicKey);
-    cut=strstr(tmpath,"/key/dpubkey.key");
+    FILE *dpubfile;
+    char dpubbuf[512];
+    memset(dpubbuf,0,512);
+    strcat(tmpath,"/key/deccpubkey.pem");
+    dpubfile = fopen(tmpath, "r");
+    if (NULL == dpubfile)
+    {
+        printf("open file 'dpubkey.pem' failed!\n");
+        return  -1;
+    }
+    cut=strstr(tmpath,"/key/deccpubkey.pem");
     *cut='\0';
-    
-    /*提取设备公钥n和e*/
-    BIGNUM *bne=BN_new();
-    BIGNUM *bnn=BN_new();
-    char *dpub_n = BN_bn2hex(dpub->n);
-    char *dpub_e = BN_bn2hex(dpub->e);
-    //printf("%s\n",dpub_n);
-    //printf("%s\n",dpub_e);
-    RSA_free(dpub);//删除公钥结构体
+    fseek(dpubfile, 0, SEEK_END);
+    int duplength = ftell(dpubfile);
+    fseek(dpubfile, 0, SEEK_SET);
+    fread(dpubbuf, sizeof(char), duplength, dpubfile);
+    fclose(dpubfile);
 
     /*创建json并摘要*/
     cJSON *root;   
     root=cJSON_CreateObject();
     cJSON_AddStringToObject(root,"flag","register");
     cJSON_AddStringToObject(root,"deviceid",deviceID); 
-    cJSON_AddStringToObject(root,"pub_e",dpub_e);
-    cJSON_AddStringToObject(root,"pub_n",dpub_n);
+    cJSON_AddStringToObject(root,"pub",dpubbuf);
+
     char* json1 = cJSON_Print(root);  
     json1 = stringStrip(json1);//删除空格和换行
-    unsigned char digest_send1[SHA_DIGEST_LENGTH];
+    unsigned char digest_send1[SHA256_DIGEST_LENGTH];
     hashMessage(digest_send1,json1);
+    //for(unsigned int i =0;i<SHA256_DIGEST_LENGTH;i++) 
+    //printf("%02x",digest_send1[i]);
 
-    /*对设备ID及设备公钥n和e签名*/
+    /*对设备ID及设备公钥签名*/
     unsigned char cipper[512]={0};
-    unsigned int signlen;
-    RSA_sign(NID_sha1, (unsigned char *)digest_send1,SHA_DIGEST_LENGTH, cipper, (unsigned int *)&signlen,ppri);
-    RSA_free(ppri);//删除私钥结构体
+    unsigned int signlen;    
+    int ret=ECDSA_sign(0,digest_send1,SHA256_DIGEST_LENGTH,cipper,&signlen,ppri);
+    if(ret!=1)
+    {
+        printf("sign err!\n");
+        return -1;
+    }
+    EC_KEY_free(ppri);//删除私钥结构体
 
     char shString[512*2+1];
     for (unsigned int i = 0; i < signlen; i++)
@@ -312,7 +347,7 @@ int regist(const char* topic)
 
     printf("\033[1m\033[45;33m[4] 订阅消息并等待响应.....\033[0m\n\n");
     usleep(2000000U);
-    int ret = setTimeout(10000000,json1_1);
+    ret = setTimeout(10000000,json1_1);
     if(ret==-1)
     {
         cJSON_Delete(root);
@@ -368,25 +403,24 @@ int regist(const char* topic)
     for (unsigned int i = 0; i < 128; i++)
         sign_rev_char[i]=(unsigned char)(sign_rev_int[2*i]*16 + sign_rev_int[2*i+1]);   
 
-    unsigned char digest_veri[SHA_DIGEST_LENGTH];
+    unsigned char digest_veri[SHA256_DIGEST_LENGTH];
     hashMessage(digest_veri,veri_rev);
     printf("返回数据摘要：");
-    for(unsigned int i =0;i<SHA_DIGEST_LENGTH;i++) 
+    for(unsigned int i =0;i<SHA256_DIGEST_LENGTH;i++) 
     printf("%02x",digest_veri[i]);
     printf("\n\n");
     usleep(2000000U);
 
     /*读取平台公钥*/
-    RSA *platpub= RSA_new();
-    strcat(tmpath,"/key/smp_public_key.pem");
-    platpub = getKey(platpub,tmpath,PEM_read_RSA_PUBKEY);
-    cut=strstr(tmpath,"/key/smp_public_key.pem");
+    EC_KEY *platpub= EC_KEY_new();
+    strcat(tmpath,"/key/ecc_smp_pub");
+    platpub = getPubKey(platpub,tmpath,PEM_read_EC_PUBKEY);
+    cut=strstr(tmpath,"/key/ecc_smp_pub");
     *cut='\0';
-
-    /*使用公钥验签*/
-    ret = RSA_verify(NID_sha1, (unsigned char *)digest_veri, SHA_DIGEST_LENGTH, (const unsigned char *)sign_rev_char, sizeof(sign_rev_char), platpub);
+            
+    ret=ECDSA_verify(0, digest_veri, SHA256_DIGEST_LENGTH, sign_rev_char, sizeof(sign_rev_char), platpub);
     printf("使用平台公钥验签RSA_verify ret=%d\n\n",ret);
-    RSA_free(platpub);
+    EC_KEY_free(platpub);
     usleep(2000000U);
 
     if(ret==1)
@@ -441,10 +475,10 @@ int measure(const char* topic)
         usleep(2000000U);
 
         /* SHA bios_image*/
-        unsigned char dig_img1[SHA_DIGEST_LENGTH]={0};
+        unsigned char dig_img1[SHA256_DIGEST_LENGTH]={0};
         hashMessage(dig_img1,buff_img1);
-        char digHex_img1[SHA_DIGEST_LENGTH*2+1]={0};
-        for (int i = 0; i < SHA_DIGEST_LENGTH; i++)
+        char digHex_img1[SHA256_DIGEST_LENGTH*2+1]={0};
+        for (int i = 0; i < SHA256_DIGEST_LENGTH; i++)
         sprintf(&digHex_img1[i*2], "%02x", (unsigned int)dig_img1[i]);
         printf("\033[1m\033[45;33m[2] 计算bios镜像度量SHA值：\033[0m\n\n%s\n\n",digHex_img1);
         usleep(2000000U);
@@ -466,23 +500,23 @@ int measure(const char* topic)
         usleep(2000000U);
 
         /* SHA os_image*/
-        unsigned char dig_img2[SHA_DIGEST_LENGTH]={0};
+        unsigned char dig_img2[SHA256_DIGEST_LENGTH]={0};
         hashMessage(dig_img2,buff_img2);
-        char digHex_img2[SHA_DIGEST_LENGTH*2+1]={0};
-        for (int i = 0; i < SHA_DIGEST_LENGTH; i++)
+        char digHex_img2[SHA256_DIGEST_LENGTH*2+1]={0};
+        for (int i = 0; i < SHA256_DIGEST_LENGTH; i++)
         sprintf(&digHex_img2[i*2], "%02x", (unsigned int)dig_img2[i]);
         printf("\033[1m\033[45;33m[4] 计算os镜像度量SHA值：\033[0m\n\n%s\n\n",digHex_img2);
         usleep(2000000U);
 
         /*拼接两个16进制的摘要*/
-        unsigned char dig_comb[SHA_DIGEST_LENGTH]={0};
-        unsigned char tmp_comb[SHA_DIGEST_LENGTH*4]={0};
+        unsigned char dig_comb[SHA256_DIGEST_LENGTH]={0};
+        unsigned char tmp_comb[SHA256_DIGEST_LENGTH*4]={0};
         strcat((char *)tmp_comb,(const char *)digHex_img1);
         strcat((char *)tmp_comb,(const char *)digHex_img2);
 
         hashMessage(dig_comb,(char *)tmp_comb);
-        char digHex_comb[SHA_DIGEST_LENGTH*2+1];
-        for (int i = 0; i < SHA_DIGEST_LENGTH; i++)
+        char digHex_comb[SHA256_DIGEST_LENGTH*2+1];
+        for (int i = 0; i < SHA256_DIGEST_LENGTH; i++)
         sprintf(&digHex_comb[i*2], "%02x", (unsigned int)dig_comb[i]);
         printf("\033[1m\033[45;33m[5] 计算bios及os镜像有序度量SHA值：\033[0m\n\n%s\n\n",digHex_comb);
         usleep(2000000U);
@@ -512,21 +546,27 @@ int measure(const char* topic)
         
         out1 = stringStrip(out1);//删除空格和换行
 
-        unsigned char dig_json[SHA_DIGEST_LENGTH];
+        unsigned char dig_json[SHA256_DIGEST_LENGTH];
         hashMessage(dig_json,out1);
 
         /*读取设备私钥*/
-        RSA *dpri= RSA_new();
-        strcat(tmpath,"/key/dprikey.key");
-        dpri = getKey(dpri,tmpath,PEM_read_RSAPrivateKey);
-        cut=strstr(tmpath,"/key/dprikey.key");
+        EC_KEY *dpri= EC_KEY_new();
+        strcat(tmpath,"/key/deccprikey.pem");
+        dpri = getPriKey(dpri,tmpath,PEM_read_ECPrivateKey);
+        cut=strstr(tmpath,"/key/deccprikey.pem");
         *cut='\0';
 
         /*加密度量json摘要*/
         unsigned char dig_encrypt[512]={0};
         unsigned int encryptlen;
-        RSA_sign(NID_sha1, (unsigned char *)dig_json,SHA_DIGEST_LENGTH, dig_encrypt, (unsigned int *)&encryptlen,dpri);
-        RSA_free(dpri);//删除私钥结构体
+   
+        int ret=ECDSA_sign(0,dig_json,SHA256_DIGEST_LENGTH,dig_encrypt,&encryptlen,dpri);
+        if(ret!=1)
+        {
+            printf("sign err!\n");
+            return -1;
+        }
+        EC_KEY_free(dpri);//删除私钥结构体
 
         char digHex_encrypt[512*2+1];
         for (unsigned int i = 0; i < encryptlen; i++)
@@ -545,7 +585,7 @@ int measure(const char* topic)
         
         printf("\033[1m\033[45;33m[7] 订阅消息并等待响应.....\033[0m\n\n");
         usleep(2000000U);
-        int ret = setTimeout(10000000,meas_out);
+        ret = setTimeout(10000000,meas_out);
         if(ret==-1)
         {
             cJSON_Delete(root);
@@ -601,24 +641,24 @@ int measure(const char* topic)
         for (unsigned int i = 0; i < 128; i++)
             sign_rev_char[i]=(unsigned char)(sign_rev_int[2*i]*16 + sign_rev_int[2*i+1]);   
 
-        unsigned char digest_veri[SHA_DIGEST_LENGTH];
+        unsigned char digest_veri[SHA256_DIGEST_LENGTH];
         hashMessage(digest_veri,veri_rev);
         printf("返回数据摘要：");
-        for(unsigned int i =0;i<SHA_DIGEST_LENGTH;i++) 
+        for(unsigned int i =0;i<SHA256_DIGEST_LENGTH;i++) 
         printf("%02x",digest_veri[i]);
         printf("\n\n");
         usleep(2000000U);
 
         /*读取平台公钥*/
-        RSA *platpub= RSA_new();
-        strcat(tmpath,"/key/smp_public_key.pem");
-        platpub = getKey(platpub,tmpath,PEM_read_RSA_PUBKEY);
-        cut=strstr(tmpath,"/key/smp_public_key.pem");
+        EC_KEY *platpub= EC_KEY_new();
+        strcat(tmpath,"/key/ecc_smp_pub");
+        platpub = getPubKey(platpub,tmpath,PEM_read_EC_PUBKEY);
+        cut=strstr(tmpath,"/key/ecc_smp_pub");
         *cut='\0';
 
-        ret = RSA_verify(NID_sha1, (unsigned char *)digest_veri, SHA_DIGEST_LENGTH, (const unsigned char *)sign_rev_char, sizeof(sign_rev_char), platpub);
+        ret=ECDSA_verify(0, digest_veri, SHA256_DIGEST_LENGTH, sign_rev_char, sizeof(sign_rev_char), platpub);
         printf("使用平台公钥验签RSA_verify ret=%d\n\n",ret);
-        RSA_free(platpub);
+        EC_KEY_free(platpub);
         usleep(2000000U);
         if(ret==1)
             {
@@ -690,7 +730,7 @@ int main(int argc, const char *argv[])
     //printf("dpath:%s\n",dpath ); 
     tmpath= dpath;
     deviceID = getenv("DEVICEID");
-    createKey();
+    //createKey();//创建密钥时用
     sockfd = open_nb_socket(addr, port);
     if (sockfd == -1) {
         perror("Failed to open socket: ");
