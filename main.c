@@ -28,7 +28,6 @@ int createKey()
 {
     EC_KEY *eckey;
     EC_GROUP *group;
-
     unsigned int ret;
     EC_builtin_curve *curves;
     int crv_len;
@@ -176,9 +175,10 @@ char* stringStrip(char *str)
     while(str[i] != '\0')
     {
         if(str[i] != '\n'&&str[i] != '\t'&&str[i] != ' ')
-            {str[j++] = str[i];
-        
-        }i++; //源一直移动
+        {
+            str[j++] = str[i];     
+        }
+        i++; //源一直移动
     }
     str[j] = '\0';
     return str;
@@ -253,7 +253,40 @@ void hashMessage(unsigned char* digest,char* message)
     SHA256_Final(digest, &ctx);
 }
 
+/*将普通字符串转化为16进制字符串*/ 
+void charToHexStr(unsigned char* CharStr,int CharStrLen,unsigned char* hexStr)
+{
+    char tmp[1024];
+    memset(tmp,0,1024);
+    for (int i = 0; i < CharStrLen; i++)
+    sprintf(&tmp[i*2],"%02x",(unsigned int)CharStr[i]);
+    memcpy(hexStr,tmp,strlen(tmp));
+}
 
+/*将16进制字符串转化为普通字符串*/ 
+int hexStrToChar(unsigned char* hexStr,unsigned int hexStrLen,unsigned char* CharStr)
+{
+    unsigned int len = hexStrLen;
+    unsigned int hexStrInt[1024]={0};
+    for (unsigned int i = 0; i<len; i++)
+    {
+        if(hexStr[i]>='0'&&hexStr[i]<='9')  
+            hexStrInt[i] = (unsigned int)(hexStr[i]-'0');       
+        else if(hexStr[i]>='a'&&hexStr[i]<='f')  
+            hexStrInt[i] = (unsigned int)(hexStr[i]-'a'+10);      
+        else if(hexStr[i]>='A'&&hexStr[i]<='F')  
+            hexStrInt[i] = (unsigned int)(hexStr[i]-'A'+10);        
+        else 
+            {
+            printf("received msg error!\n");
+            exit_example(EXIT_SUCCESS, sockfd, &client_daemon);
+            return -1;
+            }
+    }
+   for (unsigned int i = 0; i < len/2; i++)
+       CharStr[i]=hexStrInt[2*i]*16 + hexStrInt[2*i+1]; 
+   return 0;
+}
 
 int regist(const char* topic)
 {
@@ -308,8 +341,6 @@ int regist(const char* topic)
     json1 = stringStrip(json1);//删除空格和换行
     unsigned char digest_send1[SHA256_DIGEST_LENGTH];
     hashMessage(digest_send1,json1);
-    //for(unsigned int i =0;i<SHA256_DIGEST_LENGTH;i++) 
-    //printf("%02x",digest_send1[i]);
 
     /*对设备ID及设备公钥签名*/
     unsigned char cipper[512]={0};
@@ -373,7 +404,8 @@ int regist(const char* topic)
     root_rev = cJSON_Parse((const char *)rev_msg);
     char status[10];
     strcpy(status,(cJSON_GetObjectItem(root_rev,"status"))->valuestring);//读取状态
-    char sign_rev[257];
+    char sign_rev[256];
+    memset(sign_rev,0,256);
     strcpy(sign_rev,(cJSON_GetObjectItem(root_rev,"sign"))->valuestring);//读取签名
     char sever_msg[30];
     strcpy(sever_msg,(cJSON_GetObjectItem(root_rev,"msg"))->valuestring);//读取服务器返回消息
@@ -382,26 +414,10 @@ int regist(const char* topic)
 
     veri_rev = stringStrip(veri_rev);//删除空格和换行
 
-    /*将签名的16进制字符串转化为普通字符串*/    
-    unsigned char sign_rev_int[257];
+    /*将签名的16进制字符串转化为普通字符串*/ 
     unsigned char sign_rev_char[128];
-    for (unsigned int i = 0; sign_rev[i]!='\0'; i++)
-    {
-    if(sign_rev[i]>='0'&&sign_rev[i]<='9')  
-        sign_rev_int[i] = (unsigned int)(sign_rev[i]-'0');
-    else if(sign_rev[i]>='a'&&sign_rev[i]<='f')  
-        sign_rev_int[i] = (unsigned int)(sign_rev[i]-'a'+10);
-    else if(sign_rev[i]>='A'&&sign_rev[i]<='F')  
-        sign_rev_int[i] = (unsigned int)(sign_rev[i]-'A'+10);
-    else {
-        printf("received msg error!\n");
-        exit_example(EXIT_SUCCESS, sockfd, &client_daemon);
-        return 0;
-        }
-    }
-
-    for (unsigned int i = 0; i < 128; i++)
-        sign_rev_char[i]=(unsigned char)(sign_rev_int[2*i]*16 + sign_rev_int[2*i+1]);   
+    memset(sign_rev_char,0,128);
+    hexStrToChar((unsigned char *)sign_rev,strlen(sign_rev),sign_rev_char);  
 
     unsigned char digest_veri[SHA256_DIGEST_LENGTH];
     hashMessage(digest_veri,veri_rev);
@@ -478,8 +494,7 @@ int measure(const char* topic)
         unsigned char dig_img1[SHA256_DIGEST_LENGTH]={0};
         hashMessage(dig_img1,buff_img1);
         char digHex_img1[SHA256_DIGEST_LENGTH*2+1]={0};
-        for (int i = 0; i < SHA256_DIGEST_LENGTH; i++)
-        sprintf(&digHex_img1[i*2], "%02x", (unsigned int)dig_img1[i]);
+        charToHexStr(dig_img1,SHA256_DIGEST_LENGTH,(unsigned char *)digHex_img1);
         printf("\033[1m\033[45;33m[2] 计算bios镜像度量SHA值：\033[0m\n\n%s\n\n",digHex_img1);
         usleep(2000000U);
 
@@ -503,8 +518,7 @@ int measure(const char* topic)
         unsigned char dig_img2[SHA256_DIGEST_LENGTH]={0};
         hashMessage(dig_img2,buff_img2);
         char digHex_img2[SHA256_DIGEST_LENGTH*2+1]={0};
-        for (int i = 0; i < SHA256_DIGEST_LENGTH; i++)
-        sprintf(&digHex_img2[i*2], "%02x", (unsigned int)dig_img2[i]);
+        charToHexStr(dig_img2,SHA256_DIGEST_LENGTH,(unsigned char *)digHex_img2);
         printf("\033[1m\033[45;33m[4] 计算os镜像度量SHA值：\033[0m\n\n%s\n\n",digHex_img2);
         usleep(2000000U);
 
@@ -516,8 +530,7 @@ int measure(const char* topic)
 
         hashMessage(dig_comb,(char *)tmp_comb);
         char digHex_comb[SHA256_DIGEST_LENGTH*2+1];
-        for (int i = 0; i < SHA256_DIGEST_LENGTH; i++)
-        sprintf(&digHex_comb[i*2], "%02x", (unsigned int)dig_comb[i]);
+        charToHexStr(dig_comb,SHA256_DIGEST_LENGTH,(unsigned char *)digHex_comb);
         printf("\033[1m\033[45;33m[5] 计算bios及os镜像有序度量SHA值：\033[0m\n\n%s\n\n",digHex_comb);
         usleep(2000000U);
         
@@ -569,8 +582,7 @@ int measure(const char* topic)
         EC_KEY_free(dpri);//删除私钥结构体
 
         char digHex_encrypt[512*2+1];
-        for (unsigned int i = 0; i < encryptlen; i++)
-        sprintf(&digHex_encrypt[i*2], "%02x", (unsigned int)dig_encrypt[i]);
+        charToHexStr(dig_encrypt,encryptlen,(unsigned char *)digHex_encrypt);
         cJSON_AddStringToObject(root,"sign",digHex_encrypt); 
         char* meas_out = cJSON_Print(root);
                
@@ -612,6 +624,7 @@ int measure(const char* topic)
         char status[50];
         strcpy(status,(cJSON_GetObjectItem(root_rev,"status"))->valuestring);//读取状态值
         char sign_rev[257];
+        memset(sign_rev,0,257);
         strcpy(sign_rev,(cJSON_GetObjectItem(root_rev,"sign"))->valuestring);//读取签名
         char sever_msg[100];
         strcpy(sever_msg,(cJSON_GetObjectItem(root_rev,"msg"))->valuestring);//读取服务器返回消息
@@ -621,25 +634,9 @@ int measure(const char* topic)
         veri_rev = stringStrip(veri_rev);//删除空格和换行
 
         /*将签名的16进制字符串转化为普通字符串*/
-        unsigned int sign_rev_int[256];
         unsigned char sign_rev_char[128];
-        for (unsigned int i = 0; sign_rev[i]!='\0'; i++)
-        {
-        if(sign_rev[i]>='0'&&sign_rev[i]<='9')  
-            sign_rev_int[i] = (unsigned int)(sign_rev[i]-'0');
-        else if(sign_rev[i]>='a'&&sign_rev[i]<='f')  
-            sign_rev_int[i] = (unsigned int)(sign_rev[i]-'a'+10);
-        else if(sign_rev[i]>='A'&&sign_rev[i]<='F')  
-            sign_rev_int[i] = (unsigned int)(sign_rev[i]-'A'+10);
-        else {
-            printf("received msg error!\n");
-            exit_example(EXIT_SUCCESS, sockfd, &client_daemon);
-            return 0;
-            }
-        }
-
-        for (unsigned int i = 0; i < 128; i++)
-            sign_rev_char[i]=(unsigned char)(sign_rev_int[2*i]*16 + sign_rev_int[2*i+1]);   
+        memset(sign_rev_char,0,128);
+        hexStrToChar((unsigned char *)sign_rev,strlen(sign_rev),sign_rev_char); 
 
         unsigned char digest_veri[SHA256_DIGEST_LENGTH];
         hashMessage(digest_veri,veri_rev);
