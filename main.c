@@ -232,7 +232,8 @@ int setTimeout(float time,char* pubmsg)
  
     while(1)
     {
-    if(rev_msg[0]!=0 && strcmp(rev_msg,pubmsg)!=0) break;//消息体判空和防止未接收新消息重复判断        
+    //if(rev_msg[0]!=0 && strcmp(rev_msg,pubmsg)!=0) break;//消息体判空和防止未接收新消息重复判断  
+    if(rev_msg[0]!=0 ) break;//测试用        
     gettimeofday(&end,NULL);  
     time_use=(end.tv_sec-start.tv_sec)*1000000+(end.tv_usec-start.tv_usec);//微秒         
     if(time_use>=time)       
@@ -341,10 +342,16 @@ int regist(const char* topic)
     json1 = stringStrip(json1);//删除空格和换行
     unsigned char digest_send1[SHA256_DIGEST_LENGTH];
     hashMessage(digest_send1,json1);
+    //for (int i = 0; i < SHA256_DIGEST_LENGTH; ++i)
+    //printf("%02x ",digest_send1[i]);
 
     /*对设备ID及设备公钥签名*/
-    unsigned char cipper[512]={0};
-    unsigned int signlen;    
+    //unsigned char* cipper = NULL;
+    unsigned char cipper[512];
+    unsigned int signlen;
+    memset(cipper,0,512);
+    //signlen = ECDSA_size(ppri);
+    //cipper = OPENSSL_malloc(signlen);
     int ret=ECDSA_sign(0,digest_send1,SHA256_DIGEST_LENGTH,cipper,&signlen,ppri);
     if(ret!=1)
     {
@@ -354,8 +361,8 @@ int regist(const char* topic)
     EC_KEY_free(ppri);//删除私钥结构体
 
     char shString[512*2+1];
-    for (unsigned int i = 0; i < signlen; i++)
-    sprintf(&shString[i*2], "%02x", (unsigned int)cipper[i]);
+    memset(shString, 0, 1025);
+    charToHexStr(cipper,signlen,(unsigned char *)shString);
     cJSON_AddStringToObject(root,"sign",shString);
     char* json1_1 = cJSON_Print(root);
 
@@ -378,6 +385,7 @@ int regist(const char* topic)
 
     printf("\033[1m\033[45;33m[4] 订阅消息并等待响应.....\033[0m\n\n");
     usleep(2000000U);
+
     ret = setTimeout(10000000,json1_1);
     if(ret==-1)
     {
@@ -411,7 +419,7 @@ int regist(const char* topic)
     strcpy(sever_msg,(cJSON_GetObjectItem(root_rev,"msg"))->valuestring);//读取服务器返回消息
     cJSON_DeleteItemFromObject(root_rev,"sign");  
     char* veri_rev = cJSON_Print(root_rev);
-
+    printf("----------------------------------------\n");
     veri_rev = stringStrip(veri_rev);//删除空格和换行
 
     /*将签名的16进制字符串转化为普通字符串*/ 
@@ -429,9 +437,9 @@ int regist(const char* topic)
 
     /*读取平台公钥*/
     EC_KEY *platpub= EC_KEY_new();
-    strcat(tmpath,"/key/ecc_smp_pub");
+    strcat(tmpath,"/key/ecc_smp_pub.pem");
     platpub = getPubKey(platpub,tmpath,PEM_read_EC_PUBKEY);
-    cut=strstr(tmpath,"/key/ecc_smp_pub");
+    cut=strstr(tmpath,"/key/ecc_smp_pub.pem");
     *cut='\0';
             
     ret=ECDSA_verify(0, digest_veri, SHA256_DIGEST_LENGTH, sign_rev_char, sizeof(sign_rev_char), platpub);
