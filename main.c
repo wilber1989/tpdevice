@@ -638,9 +638,7 @@ int measure(const char* topic)
         strcpy(sever_msg,(cJSON_GetObjectItem(root_rev,"msg"))->valuestring);//读取服务器返回消息
         cJSON_DeleteItemFromObject(root_rev,"sign");  
         char* veri_rev = cJSON_Print(root_rev);
-
         veri_rev = stringStrip(veri_rev);//删除空格和换行
-        printf("------------%s\n", veri_rev);
 
         /*将签名的16进制字符串转化为普通字符串*/
         unsigned char sign_rev_char[128];
