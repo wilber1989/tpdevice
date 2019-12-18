@@ -232,8 +232,8 @@ int setTimeout(float time,char* pubmsg)
  
     while(1)
     {
-    //if(rev_msg[0]!=0 && strcmp(rev_msg,pubmsg)!=0) break;//消息体判空和防止未接收新消息重复判断  
-    if(rev_msg[0]!=0 ) break;//测试用        
+    if(rev_msg[0]!=0 && strcmp(rev_msg,pubmsg)!=0) break;//消息体判空和防止未接收新消息重复判断  
+    //if(rev_msg[0]!=0 ) break;//测试用        
     gettimeofday(&end,NULL);  
     time_use=(end.tv_sec-start.tv_sec)*1000000+(end.tv_usec-start.tv_usec);//微秒         
     if(time_use>=time)       
@@ -410,16 +410,17 @@ int regist(const char* topic)
     cJSON *root_rev; 
     root_rev = cJSON_CreateObject();
     root_rev = cJSON_Parse((const char *)rev_msg);
-    char status[10];
+    char status[30];
+    memset(status,0,30);
     strcpy(status,(cJSON_GetObjectItem(root_rev,"status"))->valuestring);//读取状态
     char sign_rev[256];
     memset(sign_rev,0,256);
     strcpy(sign_rev,(cJSON_GetObjectItem(root_rev,"sign"))->valuestring);//读取签名
-    char sever_msg[30];
+    char sever_msg[50];
+    memset(sever_msg,0,50);
     strcpy(sever_msg,(cJSON_GetObjectItem(root_rev,"msg"))->valuestring);//读取服务器返回消息
     cJSON_DeleteItemFromObject(root_rev,"sign");  
     char* veri_rev = cJSON_Print(root_rev);
-    printf("----------------------------------------\n");
     veri_rev = stringStrip(veri_rev);//删除空格和换行
 
     /*将签名的16进制字符串转化为普通字符串*/ 
@@ -440,9 +441,8 @@ int regist(const char* topic)
     strcat(tmpath,"/key/ecc_smp_pub.pem");
     platpub = getPubKey(platpub,tmpath,PEM_read_EC_PUBKEY);
     cut=strstr(tmpath,"/key/ecc_smp_pub.pem");
-    *cut='\0';
-            
-    ret=ECDSA_verify(0, digest_veri, SHA256_DIGEST_LENGTH, sign_rev_char, sizeof(sign_rev_char), platpub);
+    *cut='\0';      
+    ret=ECDSA_verify(0, digest_veri, SHA256_DIGEST_LENGTH, sign_rev_char, strlen(sign_rev)/2, platpub);
     printf("使用平台公钥验签RSA_verify ret=%d\n\n",ret);
     EC_KEY_free(platpub);
     usleep(2000000U);
@@ -554,11 +554,11 @@ int measure(const char* topic)
         cJSON_AddItemToObject(ml, "2", file2=cJSON_CreateObject());
 
         cJSON_AddStringToObject(file1,"name","BIOS");
-        cJSON_AddStringToObject(file1,"sha1",digHex_img1);
+        cJSON_AddStringToObject(file1,"sha256",digHex_img1);
         cJSON_AddNumberToObject(file1,"PCR",1);
 
         cJSON_AddStringToObject(file2,"name","OS");
-        cJSON_AddStringToObject(file2,"sha1",digHex_img2);
+        cJSON_AddStringToObject(file2,"sha256",digHex_img2);
         cJSON_AddNumberToObject(file2,"PCR", 1);
 
         cJSON_AddItemToObject(root, "PCRs", pcrs=cJSON_CreateObject());
@@ -640,6 +640,7 @@ int measure(const char* topic)
         char* veri_rev = cJSON_Print(root_rev);
 
         veri_rev = stringStrip(veri_rev);//删除空格和换行
+        printf("------------%s\n", veri_rev);
 
         /*将签名的16进制字符串转化为普通字符串*/
         unsigned char sign_rev_char[128];
@@ -656,12 +657,12 @@ int measure(const char* topic)
 
         /*读取平台公钥*/
         EC_KEY *platpub= EC_KEY_new();
-        strcat(tmpath,"/key/ecc_smp_pub");
+        strcat(tmpath,"/key/ecc_smp_pub.pem");
         platpub = getPubKey(platpub,tmpath,PEM_read_EC_PUBKEY);
-        cut=strstr(tmpath,"/key/ecc_smp_pub");
+        cut=strstr(tmpath,"/key/ecc_smp_pub.pem");
         *cut='\0';
 
-        ret=ECDSA_verify(0, digest_veri, SHA256_DIGEST_LENGTH, sign_rev_char, sizeof(sign_rev_char), platpub);
+        ret=ECDSA_verify(0, digest_veri, SHA256_DIGEST_LENGTH, sign_rev_char, strlen(sign_rev)/2, platpub);
         printf("使用平台公钥验签RSA_verify ret=%d\n\n",ret);
         EC_KEY_free(platpub);
         usleep(2000000U);
