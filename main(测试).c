@@ -11,7 +11,7 @@
 #include <posix_sockets.h>
 
 const char * deviceID;//获取shell当中的环境变量设备ID
-char rev_msg[1024]={0};//获取订阅消息变量
+char rev_msg[512]={0};//获取订阅消息变量
 char tmpTopic[50] = {0};//拼接各个主题
 int sockfd = -1;//socket句柄
 
@@ -30,8 +30,8 @@ int serverSocket;
 int clientSocket;
 pthread_t id, id2;
 #define SERVER_PORT 8003 //默认端口
-char devsendbuf[2048]={0};
-char devrecvbuf[2048]={0};
+char devsendbuf[2048];
+char devrecvbuf[2048];
 
 /*结束关闭socket*/
 void exit_example(int status, int sockfd, pthread_t *client_daemon)
@@ -100,10 +100,21 @@ int setTimeout(float time,char* pubmsg)
 }
 
 /* 数据发送线程*/
-int thread_send(int Client,char* msg)
+int thread_send(int Client)
 {   
-    printf("msg_send:%s\n\n",msg);
-    send(Client, msg, strlen(msg), 0);
+    while(1)//测试
+    { //测试
+    memset(devsendbuf,0,2048);//测试
+    fgets(devsendbuf,2048,stdin);//测试
+       if(strcmp(devsendbuf, "quit\n") == 0)
+        {
+        close(Client);
+        break;
+        }
+    printf("msg_send:%s\n\n",devsendbuf);
+    send(Client, devsendbuf, strlen(devsendbuf), 0);
+
+    }//测试
     return 0;
 }
 
@@ -114,8 +125,7 @@ int thread_recv(int Client)
     char tmpbuf[1024];
     while(1)
     { 
-        memset(tmpbuf,0,1024);
-        pthread_mutex_lock(&mutex); 
+        memset(tmpbuf,0,1024); 
         IDataNum = recv(Client, tmpbuf, 1024, 0);
         if(IDataNum < 1) 
             continue;
@@ -131,7 +141,7 @@ int msgExchange(const char* topic)
     while(devrecvbuf[0]==0);//等待设备发送数据
     printf("\033[1m\033[45;33m[1] 接收到设备数据及长度:\033[0m\n\n");
     printf("msg_rev：%s\nlength:%ld\n\n", devrecvbuf,strlen(devrecvbuf));
-    printf("\033[1m\033[45;33m[2] 发布消息\033[0m\n\n");
+    printf("\033[1m\033[45;33m[2] 发布消息:\033[0m\n\n");
     mqtt_publish(&client, topic, devrecvbuf, strlen((const char *)devrecvbuf), MQTT_PUBLISH_QOS_0); 
     memset(devrecvbuf,0,2048);  
     if (client.error != MQTT_OK) 
@@ -151,8 +161,9 @@ int msgExchange(const char* topic)
     printf("\n\n");
     usleep(2000000U);
     printf("\033[1m\033[45;33m[5] 返回设备数据:\033[0m\n\n");
-    thread_send(clientSocket,rev_msg);//发回给设备
-    if(strstr(rev_msg,"success")== NULL)//校验失败结束程序
+    thread_send(clientSocket);//发回给设备
+    memset(devsendbuf,0,2048); 
+    if(strstr(rev_msg,"success")== NULL)//认证失败结束程序
         exit_example(EXIT_FAILURE, sockfd, &client_daemon);
     memset(rev_msg,0,1024); 
     return 0;
@@ -289,8 +300,9 @@ int main(int argc, const char *argv[])
     printf("IP is %s\n", inet_ntoa(clientAddr.sin_addr));
     printf("Port is %d\n", htons(clientAddr.sin_port));
     printf("等待消息...\n");
+    pthread_create(&id2,NULL,(void *)thread_send,(void *)(intptr_t)clientSocket);//测试
     pthread_create(&id,NULL,(void *)thread_recv,(void *)(intptr_t)clientSocket);
-    pthread_create(&id2,NULL,(void *)deviceVeri,NULL);
+    //pthread_create(&id2,NULL,(void *)deviceVeri,NULL);
     pthread_join(id2,NULL);
     return 0;
 }
